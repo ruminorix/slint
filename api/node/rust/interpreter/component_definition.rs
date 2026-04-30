@@ -78,7 +78,7 @@ impl JsComponentDefinition {
     }
 
     #[napi(getter)]
-    pub fn is_windowed(&self) -> bool {
-        self.internal.is_windowed()
+    pub fn is_window(&self) -> bool {
+        self.internal.is_window()
     }
 }

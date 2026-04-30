@@ -1305,7 +1305,7 @@ impl ComponentDefinition {
     /// non-windowed roots such as `SystemTray`, where `window()` would panic.
     #[doc(hidden)]
     #[cfg(feature = "internal")]
-    pub fn is_windowed(&self) -> bool {
+    pub fn is_window(&self) -> bool {
         let guard = unsafe { generativity::Guard::new(generativity::Id::new()) };
         !self.inner.unerase(guard).original.inherits_system_tray()
     }

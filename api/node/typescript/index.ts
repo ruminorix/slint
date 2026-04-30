@@ -172,7 +172,7 @@ class Component implements ComponentHandle {
         // Non-windowed components (e.g. `SystemTray`) don't have a `window`:
         // the underlying `instance.window()` would panic. Install the getter
         // only when meaningful so `'window' in component` reflects support.
-        if (instance.definition().isWindowed) {
+        if (instance.definition().isWindow) {
             Object.defineProperty(this, "window", {
                 get: () => this.#instance.window(),
                 enumerable: true,
