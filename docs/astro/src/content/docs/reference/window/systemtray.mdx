@@ -4,6 +4,7 @@ description: SystemTray element api.
 ---
 import SlintProperty from '@slint/common-files/src/components/SlintProperty.astro';
 import Link from '@slint/common-files/src/components/Link.astro';
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 Use the `SystemTray` element to add an icon and menu to the desktop's system tray,
 also known as the notification area, status area, or menu bar extras, depending on the platform.
@@ -86,6 +87,59 @@ reflects the new state on its next open.
 
 Keyboard `shortcut` bindings on `MenuItem`s within a `SystemTray` are ignored — tray menus are
 not attached to a focused window, so there is nothing for the shortcut to fire against.
+
+## Component Handle API
+
+A `SystemTray`-rooted component handle is smaller than a `Window`-rooted one.
+Construction, property and callback accessors, and global access work the same way.
+Two things are missing:
+
+| Operation              | Window-rooted | SystemTray-rooted |
+| ---------------------- | :-----------: | :---------------: |
+| access the window      | yes           | **no**            |
+| run the event loop     | yes           | **no**            |
+
+`show` and `hide` exist on both, but on a `SystemTray` they set the `visible` property,
+and the platform backend translates that into the native tray API.
+Drive the event loop yourself — a tray icon doesn't have a window whose lifetime defines it.
+
+<Tabs syncKey="dev-language">
+<TabItem label="Rust">
+```rust
+fn main() {
+    let tray = ExampleTray::new().unwrap();
+    tray.on_quit(|| slint::quit_event_loop().unwrap());
+    slint::run_event_loop().unwrap();
+}
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+int main() {
+    auto tray = ExampleTray::create();
+    tray->on_quit([] { slint::quit_event_loop(); });
+    slint::run_event_loop();
+}
+```
+</TabItem>
+<TabItem label="NodeJS">
+```js
+const tray = new mod.ExampleTray();
+tray.on_quit(() => slint.quitEventLoop());
+await slint.runEventLoop();
+```
+</TabItem>
+<TabItem label="Python">
+```python
+tray = module.ExampleTray()
+tray.quit = lambda: slint.quit_event_loop()
+slint.run_event_loop()
+```
+</TabItem>
+</Tabs>
+
+A program that only exposes a `SystemTray` doesn't create a `WindowAdapter`.
+The platform backend is still selected the usual way, but no window opens.
 
 ## Platform Support
 
