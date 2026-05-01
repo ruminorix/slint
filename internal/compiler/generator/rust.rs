@@ -315,6 +315,17 @@ pub fn generate_types(used_types: &[Type]) -> (Vec<Ident>, TokenStream) {
     (structs_and_enums_ids, inner_module)
 }
 
+/// Whether anything in this compilation unit needs a `WindowAdapter`. Tray-only
+/// compilation units skip the entire `SharedGlobals` window-adapter scaffolding
+/// and elide the per-tree register/unregister/vtable hooks. A SystemTray has
+/// no window of its own, so emitting the create-window machinery for those
+/// would be both wasted code and a latent footgun (a stray `do_create=true`
+/// caller would silently materialize a hidden window adapter).
+fn doc_needs_window_adapter(llr: &llr::CompilationUnit) -> bool {
+    llr.public_components.iter().any(|p| p.top_level_type == llr::TopLevelComponentType::Window)
+        || llr.popup_menu.is_some()
+}
+
 fn generate_public_component(
     llr: &llr::PublicComponent,
     unit: &llr::CompilationUnit,
@@ -340,6 +351,21 @@ fn generate_public_component(
         quote!(sp::VRc::as_pin_ref(&self.0)),
         &ctx,
     );
+
+    // SystemTray-rooted components don't have a `WindowAdapter`. Skip the
+    // eager creation calls in `new` / `new_with_context` so instantiating
+    // a tray doesn't spin up a hidden window adapter as a side effect.
+    let (eager_create_window, init_with_context): (Option<TokenStream>, TokenStream) =
+        match llr.top_level_type {
+            llr::TopLevelComponentType::Window => (
+                Some(quote!(
+                    // ensure that the window exist as this point so further call to window() don't panic
+                    inner.globals.get().unwrap().window_adapter_ref()?;
+                )),
+                quote!(inner.globals.get().unwrap().create_window_from_context(ctx)?;),
+            ),
+            llr::TopLevelComponentType::SystemTray => (None, quote!(let _ = ctx;)),
+        };
 
     #[cfg(feature = "bundle-translations")]
     let init_bundle_translations = unit
@@ -448,8 +474,7 @@ fn generate_public_component(
                 slint::private_unstable_api::ensure_backend()?;
                 let inner = #inner_component_id::new()?;
                 #init_bundle_translations
-                // ensure that the window exist as this point so further call to window() don't panic
-                inner.globals.get().unwrap().window_adapter_ref()?;
+                #eager_create_window
                 #inner_component_id::user_init(sp::VRc::map(inner.clone(), |x| x));
                 ::core::result::Result::Ok(Self(inner))
             }
@@ -459,7 +484,7 @@ fn generate_public_component(
                 let inner = #inner_component_id::new()?;
                 #init_bundle_translations
 
-                inner.globals.get().unwrap().create_window_from_context(ctx)?;
+                #init_with_context
 
                 #inner_component_id::user_init(sp::VRc::map(inner.clone(), |x| x));
                 ::core::result::Result::Ok(Self(inner))
@@ -550,6 +575,36 @@ fn generate_shared_globals(
         })
         .unzip();
 
+    let needs_window_adapter = doc_needs_window_adapter(llr);
+
+    // `create_window_from_context` is only invoked from a Window-rooted
+    // public component's `new_with_context`, and `maybe_window_adapter_impl`
+    // is only invoked from per-tree `register_item_tree` / PinnedDrop hooks
+    // — both gated out for tray-only units. Emit them only when something
+    // actually calls them; otherwise `#![deny(warnings)]` builds (e.g.
+    // test-driver-rust with `--features build-time`) trip on dead_code.
+    // `window_adapter_impl` / `window_adapter_ref` are kept unconditionally
+    // because expression codegen (layout-info, font metrics) still
+    // references them on every tree.
+    let optional_window_adapter_helpers = needs_window_adapter.then(|| {
+        quote!(
+            #[cfg(#experimental)]
+            fn create_window_from_context(&self, ctx: sp::SlintContext) -> sp::Result<(), slint::PlatformError> {
+                let adapter = ctx.platform().create_window_adapter()?;
+                sp::WindowInner::from_pub(adapter.window()).set_context(ctx);
+                let root_rc = self.root_item_tree_weak.upgrade().unwrap();
+                sp::WindowInner::from_pub(adapter.window()).set_component(&root_rc);
+                #apply_constant_scale_factor
+                self.window_adapter.set(adapter).map_err(|_|()).expect("The window shouldn't be initialized before this call");
+                sp::Ok(())
+            }
+
+            fn maybe_window_adapter_impl(&self) -> sp::Option<sp::Rc<dyn sp::WindowAdapter>> {
+                self.window_adapter.get().cloned()
+            }
+        )
+    });
+
     quote! {
         #pub_token struct SharedGlobals {
             #(#pub_token #global_names : ::core::pin::Pin<sp::Rc<#global_types>>,)*
@@ -601,20 +656,7 @@ fn generate_shared_globals(
                 })
             }
 
-            #[cfg(#experimental)]
-            fn create_window_from_context(&self, ctx: sp::SlintContext) -> sp::Result<(), slint::PlatformError> {
-                let adapter = ctx.platform().create_window_adapter()?;
-                sp::WindowInner::from_pub(adapter.window()).set_context(ctx);
-                let root_rc = self.root_item_tree_weak.upgrade().unwrap();
-                sp::WindowInner::from_pub(adapter.window()).set_component(&root_rc);
-                #apply_constant_scale_factor
-                self.window_adapter.set(adapter).map_err(|_|()).expect("The window shouldn't be initialized before this call");
-                sp::Ok(())
-            }
-
-            fn maybe_window_adapter_impl(&self) -> sp::Option<sp::Rc<dyn sp::WindowAdapter>> {
-                self.window_adapter.get().cloned()
-            }
+            #optional_window_adapter_helpers
         }
     }
 }
@@ -1856,6 +1898,7 @@ fn generate_item_tree(
     index_property: Option<llr::PropertyIdx>,
     is_popup: bool,
 ) -> TokenStream {
+    let needs_window_adapter = doc_needs_window_adapter(root);
     let sub_comp = generate_sub_component(sub_tree.root, root, parent_ctx, index_property, true);
     let inner_component_id = self::inner_component_id(&root.sub_components[sub_tree.root]);
     let parent_component_type = parent_ctx
@@ -1965,6 +2008,44 @@ fn generate_item_tree(
         quote!(false)
     };
 
+    // SystemTray-only compilation units don't have a `WindowAdapter` on
+    // SharedGlobals, so the per-tree register / unregister / vtable hooks
+    // skip the adapter-touching paths and bottom out at None.
+    let (register_window_adapter_arg, pinned_drop_body, window_adapter_vtable_body): (
+        TokenStream,
+        Option<TokenStream>,
+        TokenStream,
+    ) = if needs_window_adapter {
+        (
+            quote!(globals.maybe_window_adapter_impl()),
+            Some(quote!(
+                sp::vtable::new_vref!(let vref : VRef<sp::ItemTreeVTable> for sp::ItemTree = self.as_ref().get_ref());
+                if let Some(wa) = self.globals.get().unwrap().maybe_window_adapter_impl() {
+                    sp::unregister_item_tree(self.as_ref(), vref, Self::item_array(), &wa);
+                }
+            )),
+            quote!(if do_create {
+                *result = sp::Some(self.globals.get().unwrap().window_adapter_impl());
+            } else {
+                *result = self.globals.get().unwrap().maybe_window_adapter_impl();
+            }),
+        )
+    } else {
+        (
+            quote!(::core::option::Option::None),
+            // Without a `WindowAdapter` there's no renderer to free graphics
+            // resources with, and items that root a tray subtree don't
+            // allocate any. Skip the unregister entirely.
+            None,
+            // Always None for tray-rooted trees: there's no adapter to hand
+            // out and `do_create=true` must not silently materialize one.
+            quote!(
+                let _ = do_create;
+                *result = sp::None;
+            ),
+        )
+    };
+
     quote!(
         #sub_comp
 
@@ -1976,7 +2057,7 @@ fn generate_item_tree(
                 let self_rc = sp::VRc::new(_self);
                 let self_dyn_rc = sp::VRc::into_dyn(self_rc.clone());
                 let globals = #globals;
-                sp::register_item_tree(&self_dyn_rc, globals.maybe_window_adapter_impl());
+                sp::register_item_tree(&self_dyn_rc, #register_window_adapter_arg);
                 Self::init(sp::VRc::map(self_rc.clone(), |x| x), globals, 0, 1);
                 ::core::result::Result::Ok(self_rc)
             }
@@ -2001,11 +2082,9 @@ fn generate_item_tree(
         };
 
         impl sp::PinnedDrop for #inner_component_id {
+            #[allow(unused)]
             fn drop(self: ::core::pin::Pin<&mut #inner_component_id>) {
-                sp::vtable::new_vref!(let vref : VRef<sp::ItemTreeVTable> for sp::ItemTree = self.as_ref().get_ref());
-                if let Some(wa) = self.globals.get().unwrap().maybe_window_adapter_impl() {
-                    sp::unregister_item_tree(self.as_ref(), vref, Self::item_array(), &wa);
-                }
+                #pinned_drop_body
             }
         }
 
@@ -2109,11 +2188,7 @@ fn generate_item_tree(
                 do_create: bool,
                 result: &mut sp::Option<sp::Rc<dyn sp::WindowAdapter>>,
             ) {
-                if do_create {
-                    *result = sp::Some(self.globals.get().unwrap().window_adapter_impl());
-                } else {
-                    *result = self.globals.get().unwrap().maybe_window_adapter_impl();
-                }
+                #window_adapter_vtable_body
             }
         }
 
