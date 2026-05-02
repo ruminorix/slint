@@ -113,7 +113,9 @@ Two things are missing:
 
 `show` and `hide` exist on both, but on a `SystemTray` they set the `visible` property,
 and the platform backend translates that into the native tray API.
-Drive the event loop yourself — a tray icon doesn't have a window whose lifetime defines it.
+A visible `SystemTray` keeps the event loop alive the same way a visible window does, so a
+tray-only program calls `slint::run_event_loop` directly and the loop quits once the tray
+is hidden (or `slint::quit_event_loop` is called).
 
 <Tabs syncKey="dev-language">
 <TabItem label="Rust">
