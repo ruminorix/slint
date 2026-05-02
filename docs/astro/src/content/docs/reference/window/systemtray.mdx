@@ -17,7 +17,7 @@ it presents is the menu.
 ```slint
 export component MyTray inherits SystemTray {
     icon: @image-url("tray-icon.png");
-    title: "My App";
+    tooltip: "My App";
 
     Menu {
         MenuItem {
@@ -54,10 +54,10 @@ for tray icons. Use `@image-url(...)` to embed an icon asset, or bind to an `ima
 fed from your code. The tray icon is only created once a non-empty image has been assigned.
 </SlintProperty>
 
-### title
-<SlintProperty propName="title" typeName="string" defaultValue='""'>
-A short description of the tray entry, used as a tooltip on platforms that support it and as
-the accessible label of the icon. Typically the application name.
+### tooltip
+<SlintProperty propName="tooltip" typeName="string" defaultValue='""'>
+The hover text shown over the tray icon.
+Typically the application name or a short status message.
 </SlintProperty>
 
 ## Callbacks
