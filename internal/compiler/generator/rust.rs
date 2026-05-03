@@ -317,7 +317,7 @@ pub fn generate_types(used_types: &[Type]) -> (Vec<Ident>, TokenStream) {
 
 /// Whether anything in this compilation unit needs a `WindowAdapter`. Tray-only
 /// compilation units skip the entire `SharedGlobals` window-adapter scaffolding
-/// and elide the per-tree register/unregister/vtable hooks. A SystemTray has
+/// and elide the per-tree register/unregister/vtable hooks. A SystemTrayIcon has
 /// no window of its own, so emitting the create-window machinery for those
 /// would be both wasted code and a latent footgun (a stray `do_create=true`
 /// caller would silently materialize a hidden window adapter).
@@ -352,7 +352,7 @@ fn generate_public_component(
         &ctx,
     );
 
-    // SystemTray-rooted components don't have a `WindowAdapter`. Skip the
+    // SystemTrayIcon-rooted components don't have a `WindowAdapter`. Skip the
     // eager creation calls in `new` / `new_with_context` so instantiating
     // a tray doesn't spin up a hidden window adapter as a side effect.
     let (eager_create_window, init_with_context): (Option<TokenStream>, TokenStream) =
@@ -364,7 +364,7 @@ fn generate_public_component(
                 )),
                 quote!(inner.globals.get().unwrap().create_window_from_context(ctx)?;),
             ),
-            llr::TopLevelComponentType::SystemTray => (None, quote!(let _ = ctx;)),
+            llr::TopLevelComponentType::SystemTrayIcon => (None, quote!(let _ = ctx;)),
         };
 
     #[cfg(feature = "bundle-translations")]
@@ -377,7 +377,7 @@ fn generate_public_component(
 
     let experimental = compiler_config.enable_experimental;
 
-    // Window-rooted components get the full `ComponentHandle` impl. SystemTray
+    // Window-rooted components get the full `ComponentHandle` impl. SystemTrayIcon
     // gets an inherent impl with no `window()` accessor: a tray icon is not a
     // `slint::Window` and the previous accessor's body would panic at runtime.
     let handle_impl = match llr.top_level_type {
@@ -415,15 +415,15 @@ fn generate_public_component(
                 }
             }
         ),
-        llr::TopLevelComponentType::SystemTray => {
-            // Look up the SystemTray native item — it sits as item 0 of the
-            // root sub-component when the public component inherits SystemTray.
+        llr::TopLevelComponentType::SystemTrayIcon => {
+            // Look up the SystemTrayIcon native item — it sits as item 0 of the
+            // root sub-component when the public component inherits SystemTrayIcon.
             let root_sub = &unit.sub_components[llr.item_tree.root];
             let tray_item = &root_sub.items[llr::ItemInstanceIdx::from(0usize)];
             debug_assert_eq!(
                 tray_item.ty.class_name.as_str(),
-                "SystemTray",
-                "TopLevelComponentType::SystemTray expects the root item to be a SystemTray"
+                "SystemTrayIcon",
+                "TopLevelComponentType::SystemTrayIcon expects the root item to be a SystemTrayIcon"
             );
             let tray_field = ident(&tray_item.name);
             // No `run()`: a tray icon doesn't drive the event loop. `show`/`hide`
@@ -2008,7 +2008,7 @@ fn generate_item_tree(
         quote!(false)
     };
 
-    // SystemTray-only compilation units don't have a `WindowAdapter` on
+    // SystemTrayIcon-only compilation units don't have a `WindowAdapter` on
     // SharedGlobals, so the per-tree register / unregister / vtable hooks
     // skip the adapter-touching paths and bottom out at None.
     let (register_window_adapter_arg, pinned_drop_body, window_adapter_vtable_body): (
@@ -4004,13 +4004,13 @@ fn compile_builtin_function_call(
                     .setup_menubar_shortcuts(sp::VRc::into_dyn(menu_item_tree));
             })
         }
-        BuiltinFunction::SetupSystemTray => {
+        BuiltinFunction::SetupSystemTrayIcon => {
             let [
                 Expression::PropertyReference(system_tray_ref),
                 Expression::NumberLiteral(tree_index),
             ] = arguments
             else {
-                panic!("internal error: incorrect arguments to SetupSystemTray")
+                panic!("internal error: incorrect arguments to SetupSystemTrayIcon")
             };
 
             let current_sub_component = ctx.current_sub_component().unwrap();
