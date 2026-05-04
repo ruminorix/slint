@@ -100,11 +100,11 @@ reflects the new state on its next open.
 Keyboard `shortcut` bindings on `MenuItem`s within a `SystemTrayIcon` are ignored — tray menus are
 not attached to a focused window, so there is nothing for the shortcut to fire against.
 
-## Component Handle API
+## Language Bindings
 
-A `SystemTrayIcon`-rooted component handle is smaller than a `Window`-rooted one.
-Construction, property and callback accessors, and global access work the same way.
-Two things are missing:
+The generated public API for a `SystemTrayIcon`-rooted component is smaller than the one
+for a `Window`-rooted component. Construction, property and callback accessors, and global
+access work the same way. Two things are missing:
 
 | Operation              | Window-rooted | SystemTrayIcon-rooted |
 | ---------------------- | :-----------: | :---------------: |
