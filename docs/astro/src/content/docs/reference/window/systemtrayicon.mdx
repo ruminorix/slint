@@ -15,7 +15,7 @@ A `SystemTrayIcon` component has no window of its own — the icon lives in the 
 it presents is the menu.
 
 ```slint
-export component MyTray inherits SystemTrayIcon {
+export component ExampleTray inherits SystemTrayIcon {
     icon: @image-url("tray-icon.png");
     tooltip: "My App";
 
@@ -203,26 +203,3 @@ selected the usual way, but no window opens.
 On Linux, a desktop environment or shell extension that implements the `StatusNotifierItem`
 specification is required; plain X11 system trays are not supported. GNOME, for example,
 needs an extension such as *AppIndicator and KStatusNotifierItem Support*.
-
-## Example
-
-```slint
-export component ExampleTray inherits SystemTrayIcon {
-    icon: @image-url("favicon.png");
-    title: "Example";
-
-    callback open();
-    callback quit();
-
-    Menu {
-        MenuItem {
-            title: "Open";
-            activated => { open(); }
-        }
-        MenuItem {
-            title: "Quit";
-            activated => { quit(); }
-        }
-    }
-}
-```
