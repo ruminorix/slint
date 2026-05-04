@@ -60,6 +60,13 @@ The hover text shown over the tray icon.
 Typically the application name or a short status message.
 </SlintProperty>
 
+### visible
+<SlintProperty propName="visible" typeName="bool" defaultValue='true'>
+Whether the tray icon is registered with the OS.
+Set it to `false` to hide the icon without dropping the component instance, and back to `true` to show it again.
+The `show()` and `hide()` methods on the language-binding side are convenience aliases that set this property.
+</SlintProperty>
+
 ### title
 <SlintProperty propName="title" typeName="string" defaultValue='""'>
 A descriptive name for the tray entry, separate from the hover tooltip.
