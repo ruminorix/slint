@@ -120,47 +120,77 @@ access work the same way. Two things are missing:
 
 `show` and `hide` exist on both, but on a `SystemTrayIcon` they set the `visible` property,
 and the platform backend translates that into the native tray API.
-A visible `SystemTrayIcon` keeps the event loop alive the same way a visible window does, so a
-tray-only program calls `slint::run_event_loop` directly and the loop quits once the tray
-is hidden (or `slint::quit_event_loop` is called).
+A visible `SystemTrayIcon` keeps the event loop alive the same way a visible window does.
+
+A typical app instantiates both a main window and a tray, shows them, and runs the event loop.
+The snippets below also wire the built-in `activated` callback so a click on the tray icon
+brings the window back if the user has hidden it.
 
 <Tabs syncKey="dev-language">
 <TabItem label="Rust">
 ```rust
-fn main() {
-    let tray = ExampleTray::new().unwrap();
-    tray.on_quit(|| slint::quit_event_loop().unwrap());
-    slint::run_event_loop().unwrap();
+fn main() -> Result<(), slint::PlatformError> {
+    let window = MainWindow::new()?;
+    let tray = ExampleTray::new()?;
+
+    let window_weak = window.as_weak();
+    tray.on_activated(move || {
+        if let Some(w) = window_weak.upgrade() {
+            let _ = w.show();
+        }
+    });
+
+    window.show()?;
+    tray.show()?;
+    slint::run_event_loop()
 }
 ```
 </TabItem>
 <TabItem label="C++">
 ```cpp
 int main() {
+    auto window = MainWindow::create();
     auto tray = ExampleTray::create();
-    tray->on_quit([] { slint::quit_event_loop(); });
+
+    auto window_weak = slint::ComponentWeakHandle(window);
+    tray->on_activated([window_weak] {
+        if (auto w = window_weak.lock()) {
+            (*w)->show();
+        }
+    });
+
+    window->show();
+    tray->show();
     slint::run_event_loop();
 }
 ```
 </TabItem>
 <TabItem label="NodeJS">
 ```js
-const tray = new mod.ExampleTray();
-tray.on_quit(() => slint.quitEventLoop());
+const window = new ui.MainWindow();
+const tray = new ui.ExampleTray();
+tray.activated = () => window.show();
+window.show();
+tray.show();
 await slint.runEventLoop();
 ```
 </TabItem>
 <TabItem label="Python">
 ```python
+window = module.MainWindow()
 tray = module.ExampleTray()
-tray.quit = lambda: slint.quit_event_loop()
+tray.activated = lambda: window.show()
+window.show()
+tray.show()
 slint.run_event_loop()
 ```
 </TabItem>
 </Tabs>
 
-A program that only exposes a `SystemTrayIcon` doesn't create a `WindowAdapter`.
-The platform backend is still selected the usual way, but no window opens.
+A program that exposes only a `SystemTrayIcon` and no window is also valid: skip the
+`MainWindow` instance, and the loop quits once the tray is hidden (or `slint::quit_event_loop`
+is called). No `WindowAdapter` is created in that case — the platform backend is still
+selected the usual way, but no window opens.
 
 ## Platform Support
 
