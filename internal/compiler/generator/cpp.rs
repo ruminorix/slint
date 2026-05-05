@@ -1950,14 +1950,14 @@ fn generate_item_tree(
         // `*result` to None before calling, so leaving it untouched reports
         // "no adapter" — and crucially `do_create=true` no longer silently
         // materializes a hidden window adapter.
-        vec!["(void)component; (void)do_create; (void)result;".into()]
+        vec![]
     };
     target_struct.members.push((
         Access::Private,
         Declaration::Function(Function {
             name: "window_adapter".into(),
             signature:
-                "(slint::private_api::ItemTreeRef component, [[maybe_unused]] bool do_create, slint::cbindgen_private::Option<slint::private_api::WindowAdapterRc>* result) -> void"
+                "([[maybe_unused]] slint::private_api::ItemTreeRef component, [[maybe_unused]] bool do_create, [[maybe_unused]] slint::cbindgen_private::Option<slint::private_api::WindowAdapterRc>* result) -> void"
                     .into(),
             is_static: true,
             statements: Some(window_adapter_vtable_statements),

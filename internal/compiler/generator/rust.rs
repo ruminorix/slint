@@ -1889,8 +1889,13 @@ fn generate_item_tree(
     is_popup: bool,
 ) -> TokenStream {
     let needs_window_adapter = root.needs_window_adapter();
-    let sub_comp =
-        generate_sub_component(sub_tree.root, root, parent_ctx, index_property, needs_window_adapter);
+    let sub_comp = generate_sub_component(
+        sub_tree.root,
+        root,
+        parent_ctx,
+        index_property,
+        needs_window_adapter,
+    );
     let inner_component_id = self::inner_component_id(&root.sub_components[sub_tree.root]);
     let parent_component_type = parent_ctx
         .iter()
