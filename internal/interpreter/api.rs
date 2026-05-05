@@ -1708,7 +1708,9 @@ impl ComponentHandle for ComponentInstance {
             // Mirror what the Rust/C++ generators emit for tray-rooted public
             // components: toggle the `visible` property; the change-tracker on
             // the SystemTrayIcon native item dispatches to the platform handle.
-            let _ = self.set_property("visible", Value::Bool(true));
+            self.set_property("visible", Value::Bool(true)).expect(
+                "setting `visible` on a SystemTrayIcon-rooted component should always succeed",
+            );
             return Ok(());
         }
         self.inner.window_adapter_ref()?.window().show()
@@ -1716,7 +1718,9 @@ impl ComponentHandle for ComponentInstance {
 
     fn hide(&self) -> Result<(), PlatformError> {
         if self.is_system_tray_rooted() {
-            let _ = self.set_property("visible", Value::Bool(false));
+            self.set_property("visible", Value::Bool(false)).expect(
+                "setting `visible` on a SystemTrayIcon-rooted component should always succeed",
+            );
             return Ok(());
         }
         self.inner.window_adapter_ref()?.window().hide()
