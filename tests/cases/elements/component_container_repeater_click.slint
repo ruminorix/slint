@@ -1,0 +1,98 @@
+// Copyright © SixtyFPS GmbH <info@slint.dev>
+// SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-Slint-Royalty-free-2.0 OR LicenseRef-Slint-Software-3.0
+
+// Test that clicking on repeater items inside a ComponentContainer works.
+// This reproduces the SlintPad Gallery sidebar scenario where clicking items
+// in a for-loop embedded via ComponentContainer should work.
+
+// FIXME: Skip embedding test on C++ and NodeJS since ComponentFactory is not implemented there!
+//ignore: cpp,js,pyi
+
+export component TestCase inherits Window {
+    width: 400px;
+    height: 300px;
+    cont := ComponentContainer { }
+    in property<component-factory> component-factory <=> cont.component-factory;
+    out property<int> result: 0;
+}
+
+/*
+```rust
+use slint::ComponentHandle;
+use std::rc::Rc;
+use std::cell::Cell;
+
+let click_result = Rc::new(Cell::new(-1i32));
+let click_result_clone = click_result.clone();
+
+let instance = TestCase::new().unwrap();
+
+// Show the window first (like SlintPad does) before setting factory
+instance.show().unwrap();
+
+let factory = slint::ComponentFactory::new(move |ctx| {
+    let click_result = click_result_clone.clone();
+    let compiler = slint_interpreter::Compiler::new();
+    // Matches the Gallery sidebar: VerticalLayout with a FocusScope (width:0)
+    // and a for-loop with items containing a TouchArea.
+    let e = spin_on::spin_on(compiler.build_from_source(
+        r#"import { VerticalLayout } from "std-widgets.slint";
+            component SideBarItem {
+                in property <bool> selected;
+                in-out property <string> text <=> label.text;
+                callback clicked <=> touch.clicked;
+                height: 30px;
+                background: selected ? blue : transparent;
+                label := Text { }
+                touch := TouchArea { width: 100%; height: 100%; }
+            }
+            export component Inner inherits Window {
+                width: 400px;
+                height: 300px;
+                property <[string]> model: ["A", "B", "C"];
+                out property <int> current-item: 0;
+                callback item-clicked(int);
+
+                VerticalLayout {
+                    fs := FocusScope {
+                        x: 0; width: 0; // Do not react on clicks
+                    }
+                    for item[index] in root.model : SideBarItem {
+                        clicked => {
+                            root.current-item = index;
+                            root.item-clicked(index);
+                        }
+                        text: item;
+                        selected: index == root.current-item;
+                    }
+                }
+            }"#.into(),
+        std::path::PathBuf::from("embedded.slint"),
+     )).component("Inner").unwrap();
+
+    let inner = e.create_embedded(ctx).unwrap();
+    inner.set_callback("item-clicked", move |args| {
+        if let Some(slint_interpreter::Value::Number(n)) = args.first() {
+            click_result.set(*n as i32);
+        }
+        slint_interpreter::Value::Void
+    }).unwrap();
+    Some(inner)
+});
+
+instance.set_component_factory(factory);
+
+// Simulate elapsed time (like a frame being rendered)
+slint_testing::mock_elapsed_time(16);
+
+// Click on the second item (y=45: center of 30-60px range)
+slint_testing::send_mouse_click(&instance, 200., 45.);
+assert_eq!(click_result.get(), 1, "clicking second item should trigger callback with index 1");
+
+// Click on the third item (y=75: center of 60-90px range)
+slint_testing::send_mouse_click(&instance, 200., 75.);
+assert_eq!(click_result.get(), 2, "clicking third item should trigger callback with index 2");
+
+instance.hide().unwrap();
+```
+*/

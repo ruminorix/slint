@@ -2153,7 +2153,7 @@ extern "C" fn ensure_instantiated(component: ItemTreeRefPin) -> bool {
             i_slint_core::items::ComponentContainer,
         >(item_ref)
         {
-            container.ensure_updated();
+            changed |= container.ensure_updated();
         }
     }
 

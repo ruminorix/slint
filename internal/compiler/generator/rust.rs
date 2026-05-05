@@ -1044,7 +1044,7 @@ fn generate_sub_component(
                 }
             ));
             ensure_instantiated_stmts.push(quote!({
-                #embed_item.ensure_updated();
+                _changed |= #embed_item.ensure_updated();
             }));
         } else {
             let repeater_id = format_ident!("repeater{}", idx);
