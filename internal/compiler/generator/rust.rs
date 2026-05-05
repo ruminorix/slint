@@ -1889,7 +1889,8 @@ fn generate_item_tree(
     is_popup: bool,
 ) -> TokenStream {
     let needs_window_adapter = root.needs_window_adapter();
-    let sub_comp = generate_sub_component(sub_tree.root, root, parent_ctx, index_property, true);
+    let sub_comp =
+        generate_sub_component(sub_tree.root, root, parent_ctx, index_property, needs_window_adapter);
     let inner_component_id = self::inner_component_id(&root.sub_components[sub_tree.root]);
     let parent_component_type = parent_ctx
         .iter()
@@ -2000,8 +2001,11 @@ fn generate_item_tree(
 
     // SystemTrayIcon-only compilation units don't have a `WindowAdapter` on
     // SharedGlobals, so the per-tree register / unregister / vtable hooks
-    // skip the adapter-touching paths and bottom out at None.
-    let (register_window_adapter_arg, pinned_drop_body, window_adapter_vtable_body): (
+    // skip the adapter-touching paths and bottom out at None. Without a
+    // `WindowAdapter` there's no renderer to free graphics resources with
+    // and tray-rooted items allocate none, so the `PinnedDrop` impl is
+    // omitted entirely (the struct uses `#[pin]` instead of `#[pin_drop]`).
+    let (register_window_adapter_arg, pinned_drop_impl, window_adapter_vtable_body): (
         TokenStream,
         Option<TokenStream>,
         TokenStream,
@@ -2009,9 +2013,13 @@ fn generate_item_tree(
         (
             quote!(globals.maybe_window_adapter_impl()),
             Some(quote!(
-                sp::vtable::new_vref!(let vref : VRef<sp::ItemTreeVTable> for sp::ItemTree = self.as_ref().get_ref());
-                if let Some(wa) = self.globals.get().unwrap().maybe_window_adapter_impl() {
-                    sp::unregister_item_tree(self.as_ref(), vref, Self::item_array(), &wa);
+                impl sp::PinnedDrop for #inner_component_id {
+                    fn drop(self: ::core::pin::Pin<&mut #inner_component_id>) {
+                        sp::vtable::new_vref!(let vref : VRef<sp::ItemTreeVTable> for sp::ItemTree = self.as_ref().get_ref());
+                        if let Some(wa) = self.globals.get().unwrap().maybe_window_adapter_impl() {
+                            sp::unregister_item_tree(self.as_ref(), vref, Self::item_array(), &wa);
+                        }
+                    }
                 }
             )),
             quote!(if do_create {
@@ -2023,9 +2031,6 @@ fn generate_item_tree(
     } else {
         (
             quote!(::core::option::Option::None),
-            // Without a `WindowAdapter` there's no renderer to free graphics
-            // resources with, and items that root a tray subtree don't
-            // allocate any. Skip the unregister entirely.
             None,
             // Always None for tray-rooted trees: there's no adapter to hand
             // out and `do_create=true` must not silently materialize one.
@@ -2071,12 +2076,7 @@ fn generate_item_tree(
             ItemTreeVTable_static!(static VT for self::#inner_component_id);
         };
 
-        impl sp::PinnedDrop for #inner_component_id {
-            #[allow(unused)]
-            fn drop(self: ::core::pin::Pin<&mut #inner_component_id>) {
-                #pinned_drop_body
-            }
-        }
+        #pinned_drop_impl
 
         impl sp::ItemTree for #inner_component_id {
             fn visit_children_item(self: ::core::pin::Pin<&Self>, index: isize, order: sp::TraversalOrder, visitor: sp::ItemVisitorRefMut<'_>)
