@@ -315,17 +315,6 @@ pub fn generate_types(used_types: &[Type]) -> (Vec<Ident>, TokenStream) {
     (structs_and_enums_ids, inner_module)
 }
 
-/// Whether anything in this compilation unit needs a `WindowAdapter`. Tray-only
-/// compilation units skip the entire `SharedGlobals` window-adapter scaffolding
-/// and elide the per-tree register/unregister/vtable hooks. A SystemTrayIcon has
-/// no window of its own, so emitting the create-window machinery for those
-/// would be both wasted code and a latent footgun (a stray `do_create=true`
-/// caller would silently materialize a hidden window adapter).
-fn doc_needs_window_adapter(llr: &llr::CompilationUnit) -> bool {
-    llr.public_components.iter().any(|p| p.top_level_type == llr::TopLevelComponentType::Window)
-        || llr.popup_menu.is_some()
-}
-
 fn generate_public_component(
     llr: &llr::PublicComponent,
     unit: &llr::CompilationUnit,
@@ -575,7 +564,7 @@ fn generate_shared_globals(
         })
         .unzip();
 
-    let needs_window_adapter = doc_needs_window_adapter(llr);
+    let needs_window_adapter = llr.needs_window_adapter();
 
     // `create_window_from_context` is only invoked from a Window-rooted
     // public component's `new_with_context`, and `maybe_window_adapter_impl`
@@ -1898,7 +1887,7 @@ fn generate_item_tree(
     index_property: Option<llr::PropertyIdx>,
     is_popup: bool,
 ) -> TokenStream {
-    let needs_window_adapter = doc_needs_window_adapter(root);
+    let needs_window_adapter = root.needs_window_adapter();
     let sub_comp = generate_sub_component(sub_tree.root, root, parent_ctx, index_property, true);
     let inner_component_id = self::inner_component_id(&root.sub_components[sub_tree.root]);
     let parent_component_type = parent_ctx

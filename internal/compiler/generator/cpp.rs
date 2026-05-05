@@ -571,16 +571,6 @@ impl CppType for Type {
     }
 }
 
-/// Whether this compilation unit needs a `WindowAdapter`. Tray-only units
-/// drop the eager `m_globals.window()` call and have the per-tree
-/// `static_vtable.window_adapter` bottom out at None — a tray icon has no
-/// window and silently materializing a hidden adapter via a stray
-/// `do_create=true` would be a footgun.
-fn doc_needs_window_adapter(llr: &llr::CompilationUnit) -> bool {
-    llr.public_components.iter().any(|p| p.top_level_type == llr::TopLevelComponentType::Window)
-        || llr.popup_menu.is_some()
-}
-
 fn to_cpp_orientation(o: Orientation) -> &'static str {
     match o {
         Orientation::Horizontal => "slint::cbindgen_private::Orientation::Horizontal",
@@ -1575,7 +1565,7 @@ fn generate_item_tree(
     file: &mut File,
     conditional_includes: &ConditionalIncludes,
 ) {
-    let needs_window_adapter = doc_needs_window_adapter(root);
+    let needs_window_adapter = root.needs_window_adapter();
     // True only for the root tree of a SystemTrayIcon-rooted public component.
     // Repeaters / popup_menu / popup-window trees stay on the windowed code
     // path even when they live inside a tray-only unit (popup menus are
